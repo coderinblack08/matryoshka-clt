@@ -31,6 +31,10 @@ def main() -> None:
     ap.add_argument("--expansion", type=int, default=32)
     ap.add_argument("--prefixes", nargs="+", type=int, default=None, help="Matryoshka prefixes; default = [F/8,F/4,F/2,F]")
     ap.add_argument("--activation", default="relu", choices=["relu", "jump_relu"]) 
+    ap.add_argument("--lazy-decoder", dest="lazy_decoder", action="store_true", help="Load decoder weights lazily to reduce VRAM (recommended)")
+    ap.add_argument("--no-lazy-decoder", dest="lazy_decoder", action="store_false")
+    ap.set_defaults(lazy_decoder=True)
+    ap.add_argument("--decode-topk", type=int, default=0, help="Keep only top-k features per position when decoding to bound memory (0 = off)")
     ap.add_argument("--steps", type=int, default=2000)
     ap.add_argument("--lr", type=float, default=4e-4)
     ap.add_argument("--l1", type=float, default=1.4e-4)
@@ -95,6 +99,8 @@ def main() -> None:
             d_transcoder=features,
             prefixes=sorted(prefixes),
             activation_function=args.activation,
+            lazy_decoder=args.lazy_decoder,
+            decode_topk=(args.decode_topk or None),
             lr=args.lr,
             steps=args.steps,
             batch_size=4096,  # ignored: full-batch from NPZ via DataLoader in train_matryoshka_clt
@@ -182,6 +188,8 @@ def main() -> None:
             d_transcoder=features,
             prefixes=sorted(prefixes),
             activation_function=args.activation,
+            lazy_decoder=args.lazy_decoder,
+            decode_topk=(args.decode_topk or None),
             lr=args.lr,
             steps=args.steps,
             batch_size=args.batch_tokens,

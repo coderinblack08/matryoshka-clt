@@ -18,6 +18,9 @@ class MatryoshkaCLTConfig:
     d_transcoder: int
     prefixes: List[int]  # e.g., [256, 512, 1024]
     activation_function: str = "relu"  # or "jump_relu"
+    # Controls
+    lazy_decoder: bool = True
+    decode_topk: int | None = None  # If set, keep top-k features per position when decoding
     lr: float = 4e-4
     steps: int = 10_000
     batch_size: int = 4096
@@ -49,7 +52,7 @@ class MatryoshkaCLTTrainer:
             d_transcoder=cfg.d_transcoder,
             d_model=cfg.d_model,
             activation_function=cfg.activation_function,
-            lazy_decoder=False,
+            lazy_decoder=cfg.lazy_decoder,
             lazy_encoder=False,
             device=torch.device(cfg.device),
             dtype=dtype,
@@ -79,7 +82,34 @@ class MatryoshkaCLTTrainer:
         if p < feats.shape[-1]:
             masked = feats.clone()
             masked[..., p:] = 0
-        # Convert to sparse per-layer for decoder path
+
+        # If configured, keep only top-k features per position to ensure true sparsity
+        if self.cfg.decode_topk is not None and self.cfg.decode_topk > 0:
+            k = min(self.cfg.decode_topk, masked.shape[-1])
+            # Build a sparse tensor per layer with only top-k entries per position
+            sparse_layers = []
+            for l in range(masked.shape[0]):
+                layer_feats = masked[l]  # [batch, d_transcoder]
+                # Select top-k by absolute value per position
+                values, idxs = torch.topk(layer_feats.abs(), k=k, dim=-1, sorted=False)
+                # Gather signed values
+                signed_vals = torch.gather(layer_feats, -1, idxs)
+                # Indices for sparse tensor: [2, nnz] where rows are (pos, feat)
+                pos_idx = torch.arange(layer_feats.shape[0], device=layer_feats.device).unsqueeze(1).expand(-1, k)
+                indices = torch.stack([pos_idx.reshape(-1), idxs.reshape(-1)])
+                sparse_layer = torch.sparse_coo_tensor(
+                    indices,
+                    signed_vals.reshape(-1),
+                    size=(layer_feats.shape[0], layer_feats.shape[1]),
+                    device=layer_feats.device,
+                    dtype=layer_feats.dtype,
+                ).coalesce()
+                sparse_layers.append(sparse_layer)
+            sparse_feats = torch.stack(sparse_layers).coalesce()
+            return self.model.decode(sparse_feats)
+
+        # Fallback: convert dense to (potentially dense) sparse per-layer
+        # WARNING: This is only memory-safe when masked is already very sparse
         sparse_layers = []
         for l in range(masked.shape[0]):
             layer_feats = masked[l]  # [batch, d_transcoder]
