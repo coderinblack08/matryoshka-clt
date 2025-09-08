@@ -54,6 +54,7 @@ def main() -> None:
     ap.add_argument("--split", default="train", help="Dataset split (streaming mode)")
     ap.add_argument("--seq-len", type=int, default=128, help="Sequence length (streaming mode)")
     ap.add_argument("--batch-tokens", type=int, default=4096, help="Tokens per batch (streaming mode)")
+    ap.add_argument("--microbatch-positions", type=int, default=0, help="If > 0, split positions (batch*seq) into microbatches to reduce VRAM usage")
 
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -158,7 +159,8 @@ def main() -> None:
             hooks_y = [f"blocks.{l}.hook_mlp_out" for l in range(n_layers)]
             cache = {}
             def save(t, hook):
-                cache[hook.name] = t.detach().to(dtype)
+                # Move activations to CPU immediately to keep VRAM low
+                cache[hook.name] = t.detach().to(torch.float32, copy=True, device='cpu')
             fwd_hooks = [(name, save) for name in hooks_x + hooks_y]
             with torch.no_grad():
                 _ = model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
@@ -203,10 +205,23 @@ def main() -> None:
                 with torch.no_grad():
                     trainer.model.b_dec.copy_(y.mean(dim=1))
                 initialized = True
-            logs = trainer.step(x.to(device), y.to(device))
+            N = x.shape[1]
+            mb = args.microbatch_positions or 0
+            if mb > 0 and mb < N:
+                # Process in microbatches to reduce peak VRAM
+                last_logs = {}
+                for s in range(0, N, mb):
+                    xb = x[:, s : s + mb, :].to(device, dtype=dtype, non_blocking=True)
+                    yb = y[:, s : s + mb, :].to(device, dtype=dtype, non_blocking=True)
+                    last_logs = trainer.step(xb, yb)
+                    if wandb is not None:
+                        wandb.log(last_logs)
+                logs = last_logs
+            else:
+                logs = trainer.step(x.to(device, dtype=dtype), y.to(device, dtype=dtype))
+                if wandb is not None:
+                    wandb.log(logs)
             pbar.set_postfix({k: f"{v:.4f}" for k, v in logs.items() if isinstance(v, (int, float))})
-            if wandb is not None:
-                wandb.log(logs)
 
         if args.save_safetensors:
             save_clt_safetensors(trainer.model, args.out)
