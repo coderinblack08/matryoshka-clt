@@ -24,6 +24,8 @@ default = [
     "transformer-lens>=2.16.0",
     "transformers>=4.50.0",
     "datasets>=2.20.0",
+    "wandb>=0.17",
+    "huggingface_hub>=0.24",
 ]
 dev = [
     "pytest>=8.0",

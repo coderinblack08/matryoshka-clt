@@ -560,12 +560,14 @@ dependencies = [
 [package.dev-dependencies]
 default = [
     { name = "datasets" },
+    { name = "huggingface-hub" },
     { name = "numpy" },
     { name = "safetensors" },
     { name = "torch" },
     { name = "tqdm" },
     { name = "transformer-lens" },
     { name = "transformers" },
+    { name = "wandb" },
 ]
 dev = [
     { name = "pytest" },
@@ -580,12 +582,14 @@ requires-dist = [
 [package.metadata.requires-dev]
 default = [
     { name = "datasets", specifier = ">=2.20.0" },
+    { name = "huggingface-hub", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "safetensors", specifier = ">=0.4" },
     { name = "torch", specifier = ">=2.2" },
     { name = "tqdm", specifier = ">=4.66" },
     { name = "transformer-lens", specifier = ">=2.16.0" },
     { name = "transformers", specifier = ">=4.50.0" },
+    { name = "wandb", specifier = ">=0.17" },
 ]
 dev = [{ name = "pytest", specifier = ">=8.0" }]
 

@@ -41,6 +41,14 @@ def main() -> None:
     ap.add_argument("--out", default="out")
     ap.add_argument("--save-safetensors", action="store_true")
 
+    # Logging and publishing
+    ap.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    ap.add_argument("--wandb-project", default="matryoshka-clt", help="W&B project name")
+    ap.add_argument("--wandb-entity", default=None, help="W&B entity/org (optional)")
+    ap.add_argument("--hf-repo-id", default=None, help="Hugging Face repo to upload artifacts (e.g., user/repo)")
+    ap.add_argument("--hf-branch", default="main", help="Target branch for upload")
+    ap.add_argument("--hf-subdir", default=None, help="Optional subdirectory within the repo to place artifacts")
+
     # Streaming-only options
     ap.add_argument("--model", default="gpt2-small", help="TransformerLens model name (streaming mode)")
     ap.add_argument("--split", default="train", help="Dataset split (streaming mode)")
@@ -49,6 +57,16 @@ def main() -> None:
 
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
+
+    # Optional W&B init (lazy import)
+    wandb = None
+    if args.wandb:
+        try:
+            import wandb as _wandb
+            wandb = _wandb
+            wandb.init(project=args.wandb_project, entity=args.wandb_entity, config=vars(args))
+        except Exception as e:
+            print(f"[wandb] Failed to initialize logging: {e}")
 
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
     dtype = {
@@ -64,7 +82,7 @@ def main() -> None:
     prefixes = args.prefixes or [features // 8, features // 4, features // 2, features]
 
     if args.data:
-        # Offline training from NPZ pairs
+        # Offline mode
         npz = np.load(args.data)
         if not ("x" in npz and "y" in npz):
             raise SystemExit("NPZ must contain arrays 'x' and 'y'")
@@ -93,9 +111,22 @@ def main() -> None:
             save_clt_safetensors(model, args.out)
         else:
             torch.save(model.state_dict(), os.path.join(args.out, "clt.pt"))
+        # Save basic config for publishing
+        with open(os.path.join(args.out, "clt_config.json"), "w") as f:
+            json.dump({
+                "n_layers": cfg.n_layers,
+                "d_model": cfg.d_model,
+                "d_transcoder": cfg.d_transcoder,
+                "prefixes": cfg.prefixes,
+                "activation": cfg.activation_function,
+                "dtype": cfg.dtype,
+            }, f, indent=2)
         print(f"Saved to {args.out}")
+        # Optional upload to HF
+        if args.hf_repo_id:
+            _upload_to_hf(args.hf_repo_id, args.hf_branch, args.out, subdir=args.hf_subdir)
     else:
-        # Streaming mode from dataset + model
+        # Streaming mode
         def iter_token_batches(ds_name: str, split: str, tokenizer, *, seq_len: int, batch_tokens: int) -> Iterable[torch.Tensor]:
             ds = load_dataset(ds_name, split=split, streaming=True)
             batch = max(1, batch_tokens // seq_len)
@@ -162,12 +193,71 @@ def main() -> None:
                 initialized = True
             logs = trainer.step(x.to(device), y.to(device))
             pbar.set_postfix({k: f"{v:.4f}" for k, v in logs.items() if isinstance(v, (int, float))})
+            if wandb is not None:
+                wandb.log(logs)
 
         if args.save_safetensors:
             save_clt_safetensors(trainer.model, args.out)
         else:
             torch.save(trainer.model.state_dict(), os.path.join(args.out, "clt.pt"))
+        # Save basic config for publishing
+        with open(os.path.join(args.out, "clt_config.json"), "w") as f:
+            json.dump({
+                "n_layers": cfg.n_layers,
+                "d_model": cfg.d_model,
+                "d_transcoder": cfg.d_transcoder,
+                "prefixes": cfg.prefixes,
+                "activation": cfg.activation_function,
+                "dtype": cfg.dtype,
+                "model_name": args.model,
+                "dataset": args.dataset,
+                "split": args.split,
+                "seq_len": args.seq_len,
+                "batch_tokens": args.batch_tokens,
+            }, f, indent=2)
         print(f"Saved to {args.out}")
+        # Optional upload to HF
+        if args.hf_repo_id:
+            _upload_to_hf(args.hf_repo_id, args.hf_branch, args.out, subdir=args.hf_subdir)
+
+    if wandb is not None:
+        try:
+            wandb.finish()
+        except Exception:
+            pass
+
+
+def _upload_to_hf(repo_id: str, branch: str, local_dir: str, *, subdir: str | None = None) -> None:
+    """Upload artifacts in local_dir to a Hugging Face Hub repo (minimal).
+
+    Requires HF token in environment (HUGGINGFACE_HUB_TOKEN or huggingface-cli login).
+    Only uploads common artifact files; does not create README or other extras.
+    """
+    try:
+        from huggingface_hub import HfApi, create_repo
+        from huggingface_hub.utils import RepositoryNotFoundError
+    except Exception as e:
+        print(f"[hf] huggingface_hub not available: {e}")
+        return
+
+    api = HfApi()
+    # Create repo if missing
+    try:
+        api.repo_info(repo_id)
+    except RepositoryNotFoundError:
+        create_repo(repo_id, repo_type="model", exist_ok=True)
+
+    path_in_repo = subdir or ""
+    print(f"[hf] Uploading {local_dir} -> {repo_id}:{branch}/{path_in_repo or '.'}")
+    api.upload_folder(
+        folder_path=local_dir,
+        repo_id=repo_id,
+        repo_type="model",
+        revision=branch,
+        path_in_repo=path_in_repo,
+        commit_message="Upload Matryoshka CLT artifacts",
+        allow_patterns=["*.safetensors", "*.pt", "*.json"],
+    )
 
 
 if __name__ == "__main__":
