@@ -41,6 +41,16 @@ clt = load_clt('./out')
 print('Loaded CLT with', clt.n_layers, 'layers and', clt.d_transcoder, 'features')
 PY`
 
+## Logging & Upload
+
+- Enable W&B logging (optional):
+  - `wandb login` (once per machine)
+  - Add flags: `--wandb --wandb-project matryoshka-clt [--wandb-entity your_team]`
+- Upload artifacts to Hugging Face (optional):
+  - `huggingface-cli login` or set `HUGGINGFACE_HUB_TOKEN`
+  - Add flags: `--hf-repo-id yourname/matryoshka-clt --hf-branch main [--hf-subdir gpt2-small]`
+  - Uploads files from `--out` matching: `*.safetensors`, `*.pt`, `*.json`
+
 ## Flags
 
 - `--features` or `--expansion` (default 32): set feature count directly or compute `d_transcoder = expansion * d_model`
@@ -49,6 +59,8 @@ PY`
 - `--batch-size` (default 4096), `--dtype`: `float32|bfloat16|float16`
 - `--b-dec-init` (default `mean`): initialize decoder bias to mean(y) or zeros
 - `--save-safetensors`: write `W_enc_*.safetensors`, `W_dec_*.safetensors` compatible with circuit-tracer
+- `--wandb`, `--wandb-project`, `--wandb-entity`: enable and configure W&B logging
+- `--hf-repo-id`, `--hf-branch`, `--hf-subdir`: upload artifacts to the Hugging Face Hub
 
 ## Notes
 
