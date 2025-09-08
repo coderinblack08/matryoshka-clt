@@ -7,7 +7,10 @@ authors = [
     { name = "Kevin Lu", email = "kevinlu.email@gmail.com" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "datasets>=4.0.0",
+    "transformer-lens>=2.16.1",
+]
 
 [project.scripts]
 matryoshka-clt = "matryoshka_clt.cli:main"
@@ -18,6 +21,9 @@ default = [
     "numpy>=1.26",
     "tqdm>=4.66",
     "safetensors>=0.4",
+    "transformer-lens>=2.16.0",
+    "transformers>=4.50.0",
+    "datasets>=2.20.0",
 ]
 dev = [
     "pytest>=8.0",

@@ -30,8 +30,10 @@ import numpy as np
 n_layers, n_pos, d_model = 4, 512, 256
 np.savez('pairs.npz', x=np.random.randn(n_layers,n_pos,d_model).astype('float32'), y=np.random.randn(n_layers,n_pos,d_model).astype('float32'))
 PY`
-- Train a CLT with nested prefixes (example, hyperparams inspired by sae_training transcoders):
-  - `uv run matryoshka-clt --data ./pairs.npz --n-layers 4 --d-model 256 --expansion 32 --prefixes 128 256 512 --steps 200 --batch-size 4096 --lr 4e-4 --l1 1.4e-4 --warmup-steps 5000 --out ./out --save-safetensors`
+- Train from precomputed pairs.npz (offline):
+  - `uv run matryoshka-clt --data ./pairs.npz --n-layers 4 --d-model 256 --expansion 32 --prefixes 128 256 512 --steps 200 --lr 4e-4 --l1 1.4e-4 --warmup-steps 5000 --out ./out --save-safetensors`
+- Stream dataset with GPT‑2 small (online):
+  - `uv run matryoshka-clt --dataset Skylion007/openwebtext --split train --model gpt2-small --n-layers 12 --d-model 768 --expansion 32 --seq-len 128 --batch-tokens 4096 --prefixes 3072 6144 12288 24576 --steps 2000 --lr 4e-4 --l1 1.4e-4 --warmup-steps 5000 --out out_gpt2_clt --save-safetensors`
 - Load the trained CLT in circuit-tracer (example):
   - `python - << 'PY'
 from circuit_tracer.transcoder.cross_layer_transcoder import load_clt
