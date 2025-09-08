@@ -21,6 +21,7 @@ class MatryoshkaCLTConfig:
     # Controls
     lazy_decoder: bool = True
     decode_topk: int | None = None  # If set, keep top-k features per position when decoding
+    clt_path: Optional[str] = None  # If using lazy decoder, path to W_dec_*.safetensors
     lr: float = 4e-4
     steps: int = 10_000
     batch_size: int = 4096
@@ -47,13 +48,16 @@ class MatryoshkaCLTTrainer:
     def __init__(self, cfg: MatryoshkaCLTConfig):
         self.cfg = cfg
         dtype = _dtype_from_str(cfg.dtype)
+        # Use lazy decoder only if a clt_path is provided (lazy mode loads from disk)
+        use_lazy_decoder = bool(cfg.lazy_decoder and cfg.clt_path)
         self.model = CrossLayerTranscoder(
             n_layers=cfg.n_layers,
             d_transcoder=cfg.d_transcoder,
             d_model=cfg.d_model,
             activation_function=cfg.activation_function,
-            lazy_decoder=cfg.lazy_decoder,
+            lazy_decoder=use_lazy_decoder,
             lazy_encoder=False,
+            clt_path=cfg.clt_path if use_lazy_decoder else None,
             device=torch.device(cfg.device),
             dtype=dtype,
         )
