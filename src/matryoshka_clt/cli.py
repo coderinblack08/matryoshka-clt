@@ -160,7 +160,7 @@ def main() -> None:
             cache = {}
             def save(t, hook):
                 # Move activations to CPU immediately to keep VRAM low
-                cache[hook.name] = t.detach().to(torch.float32, copy=True, device='cpu')
+                cache[hook.name] = t.detach().to(dtype=torch.float32).cpu()
             fwd_hooks = [(name, save) for name in hooks_x + hooks_y]
             with torch.no_grad():
                 _ = model.run_with_hooks(tokens, fwd_hooks=fwd_hooks)
