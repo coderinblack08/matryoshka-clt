@@ -59,9 +59,12 @@ class MatryoshkaCLTTrainer:
         )
         # Kaiming init for enc/dec
         with torch.no_grad():
-            nn.init.kaiming_uniform_(self.model.W_enc, a=0.0)
-            for i in range(cfg.n_layers):
-                nn.init.kaiming_uniform_(self.model.W_dec[i], a=0.0)
+            if hasattr(self.model, "W_enc") and self.model.W_enc is not None:
+                nn.init.kaiming_uniform_(self.model.W_enc, a=0.0)
+            # Only initialize decoder weights if they are eagerly allocated
+            if not cfg.lazy_decoder and getattr(self.model, "W_dec", None) is not None:
+                for i in range(cfg.n_layers):
+                    nn.init.kaiming_uniform_(self.model.W_dec[i], a=0.0)
 
         self.opt = torch.optim.AdamW(self.model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
         # Constant with warmup schedule
