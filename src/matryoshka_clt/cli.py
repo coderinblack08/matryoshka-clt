@@ -128,7 +128,8 @@ def main() -> None:
     else:
         # Streaming mode
         def iter_token_batches(ds_name: str, split: str, tokenizer, *, seq_len: int, batch_tokens: int) -> Iterable[torch.Tensor]:
-            ds = load_dataset(ds_name, split=split, streaming=True)
+            # trust_remote_code=True is required for older community datasets like Skylion007/openwebtext
+            ds = load_dataset(ds_name, split=split, streaming=True, trust_remote_code=True)
             batch = max(1, batch_tokens // seq_len)
             buf = []
             for item in ds.shuffle(buffer_size=10_000):
