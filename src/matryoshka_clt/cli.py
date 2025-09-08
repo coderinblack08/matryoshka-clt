@@ -22,7 +22,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(prog="matryoshka-clt")
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--data", help="NPZ with arrays x,y shaped [n_layers, n_pos, d_model]")
-    mode.add_argument("--dataset", help="HF dataset name for streaming training (e.g., Skylion007/openwebtext)")
+    mode.add_argument("--dataset", help="HF dataset name for streaming training (e.g., NeelNanda/openwebtext-tokenized-9b)")
 
     # Common hyperparameters
     ap.add_argument("--n-layers", type=int, default=12)
@@ -128,14 +128,25 @@ def main() -> None:
     else:
         # Streaming mode
         def iter_token_batches(ds_name: str, split: str, tokenizer, *, seq_len: int, batch_tokens: int) -> Iterable[torch.Tensor]:
-            # trust_remote_code=True is required for older community datasets like Skylion007/openwebtext
-            ds = load_dataset(ds_name, split=split, streaming=True, trust_remote_code=True)
+            # Support tokenized datasets (tokens/input_ids) or raw text. Avoid remote code.
+            ds = load_dataset(ds_name, split=split, streaming=True)
             batch = max(1, batch_tokens // seq_len)
             buf = []
             for item in ds.shuffle(buffer_size=10_000):
-                text = item["text"] if isinstance(item, dict) else str(item)
-                toks = tokenizer.encode(text, add_special_tokens=False)
-                for i in range(0, len(toks) - seq_len, seq_len):
+                toks = None
+                if isinstance(item, dict):
+                    if "tokens" in item:
+                        toks = item["tokens"]
+                    elif "input_ids" in item:
+                        toks = item["input_ids"]
+                    elif "text" in item:
+                        toks = tokenizer.encode(item["text"], add_special_tokens=False)
+                if toks is None:
+                    toks = tokenizer.encode(str(item), add_special_tokens=False)
+                if hasattr(toks, "tolist"):
+                    toks = toks.tolist()
+                # Create non-overlapping windows
+                for i in range(0, max(0, len(toks) - seq_len), seq_len):
                     buf.append(toks[i : i + seq_len])
                     if len(buf) >= batch:
                         arr = np.array(buf[:batch], dtype=np.int64)
